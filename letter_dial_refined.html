@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f8fc">
+<title>LETTER DIAL</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #303b4b;
+    --muted: #738093;
+    --rim: #dce3ed;
+    --paper: #fafdff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100svh; display: grid; place-items: center;
+    padding: max(7px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-left)) max(7px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
+    background: radial-gradient(ellipse at 50% 35%, #fff 0%, #f7f9fd 62%, #eef2f8 100%);
+    color: var(--ink);
+    font-family: "Noto Sans", "Noto Sans JP", "Yu Gothic", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  }
+  .app {
+    width: min(100%, 1000px);
+    display: flex; flex-direction: column; gap: clamp(4px, 1vh, 8px);
+    height: 100svh;
+    max-height: 100svh;
+    justify-content: space-evenly;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding: 0 3px; }
+  .brand { font-weight: 800; letter-spacing: .14em; font-size: .96rem; }
+  .mode { color: var(--muted); font-size: .68rem; letter-spacing: .12em; margin-top: 4px; }
+  button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .orientation-status {
+    border: 1px solid #d7deea; background: rgba(255,255,255,.92); color: var(--muted);
+    border-radius: 999px; padding: 7px 10px; font-size:.66rem; font-weight:750;
+    letter-spacing:.04em; white-space:normal; text-align:right; max-width:52%;
+  }
+  .sensor-debug {
+    min-height:1.25em; font-size:.68rem; color:#586579; text-align:center;
+    padding:2px 6px; overflow-wrap:anywhere; line-height:1.3;
+  }
+  .portrait-overlay {
+    display:none; position:fixed; inset:0; z-index:10; background:#f6f8fc; color:var(--ink);
+    align-items:center; justify-content:center; text-align:center; padding:28px;
+  }
+  .portrait-overlay .inner { max-width:280px; display:flex; flex-direction:column; gap:12px; align-items:center; }
+  .portrait-overlay .symbol { font-size:2.5rem; }
+  @media (orientation: portrait) {
+    .app { visibility:hidden; }
+    .portrait-overlay { display:flex; }
+  }
+  /* Landscape-friendly stage: keep the dial wide and fit its height to the viewport. */
+  .stage {
+    position:relative;
+    width:100%;
+    height:min(70svh, 520px);
+    min-height:210px;
+    margin:0 auto;
+    flex:1 1 auto;
+    max-height:calc(100svh - 105px);
+  }
+  .window-rim {
+    position:absolute; left:50%; top:50%; width:min(42%, 58svw); height:56%; transform:translate(-50%,-50%);
+    border-radius:50%; padding: clamp(7px, 2vw, 12px);
+    background: linear-gradient(145deg,#f5f7fb,#cbd4e2 52%,#eef2f8);
+    box-shadow: 0 12px 26px #34445c24, inset 0 2px 3px #fff;
+  }
+  .window {
+    width:100%; height:100%; border-radius:50%; border:2px solid #c7d2e1;
+    transform: rotate(0deg);
+    transition: transform 760ms cubic-bezier(.18,.78,.22,1);
+    background: radial-gradient(circle at 38% 30%, #fff, #f2f7fd 72%);
+    box-shadow: inset 0 3px 12px #71839c14;
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    padding: 15%; overflow:hidden;
+  }
+  .output {
+    width:100%; min-height:1.35em; text-align:center; white-space:nowrap;
+    font-size:clamp(1.05rem, 4.5vh, 1.8rem); font-weight:750; letter-spacing:.025em;
+    overflow:hidden; text-overflow:clip; line-height:1.25;
+  }
+  .count { color:var(--muted); font-size:.72rem; margin-top:9px; }
+  .hint {
+    position:absolute; left:50%; top:calc(50% + 29%); transform:translateX(-50%);
+    color:#d9465b; font-size:clamp(.68rem,2.7vw,.85rem); font-weight:700;
+    white-space:nowrap; min-height:1.2em; text-align:center;
+  }
+  .keys { position:absolute; inset:0; }
+  .key {
+    --angle: 0deg;
+    position:absolute; left:50%; top:50%; width:clamp(38px, 9.5vh, 64px); aspect-ratio:1; border:2px solid #ffffffc9;
+    border-radius:50%; color:white; font-family:'Trebuchet MS','Arial Rounded MT Bold','Noto Sans',system-ui,sans-serif; font-weight:800; font-size:clamp(1.25rem,6.5vw,2rem);
+    display:grid; place-items:center; box-shadow:0 7px 13px #26344a20, inset 0 2px 2px #ffffff45;
+    transform: translate(-50%,-50%) rotate(var(--angle)) translateY(calc(min(38vw, 172px) * -1)) rotate(calc(var(--angle) * -1));
+    transition: left 760ms cubic-bezier(.18,.78,.22,1), top 760ms cubic-bezier(.18,.78,.22,1), transform 760ms cubic-bezier(.18,.78,.22,1), filter 300ms, box-shadow 300ms;
+    user-select:none; border-style:solid;
+  }
+  /* Keep the circular buttons upright while their positions orbit during the rotation. */
+  .key .glyph { display:block; transform:rotate(0deg); transition: transform 760ms cubic-bezier(.2,.8,.2,1); }
+  @keyframes glyphChange { 0% { opacity:.35; scale:.88; } 100% { opacity:1; scale:1; } }
+  .key .glyph-change { animation:glyphChange 260ms ease-out; }
+  .key:active { filter:brightness(1.08); box-shadow:0 3px 7px #26344a22, inset 0 2px 2px #ffffff50; }
+  .key:focus-visible, .rotate-control:focus-visible, .clear:focus-visible { outline:3px solid #293c5a; outline-offset:3px; }
+  .key:nth-child(1) { background:#ef4055; }
+  .key:nth-child(2) { background:#f58b22; }
+  .key:nth-child(3) { background:#e9b91b; }
+  .key:nth-child(4) { background:#49a84e; }
+  .key:nth-child(5) { background:#20a8b9; }
+  .key:nth-child(6) { background:#267fe5; }
+  .key:nth-child(7) { background:#5269e8; }
+  .key:nth-child(8) { background:#bd58d4; }
+  .key:nth-child(9) { background:#f34e9c; }
+  .key:nth-child(10) { background:#8750cf; }
+  .key.rotated { filter:saturate(.95); }
+  .key.rotated .glyph { transform:rotate(180deg); }
+  .bottom { display:flex; gap:10px; }
+  .clear {
+    flex:1; border:1px solid #d7deea; background:#ffffffb8; color:var(--ink);
+    border-radius:14px; padding:12px 14px; font-weight:650;
+  }
+  .help { text-align:center; font-size:.76rem; color:var(--muted); line-height:1.5; margin:0; }
+  .longpress-note { font-size:.72rem; color:var(--muted); text-align:center; margin-top:-7px; }
+  @media (max-height:420px) {
+    .stage { height:58svh; min-height:150px; }
+    .key { width:clamp(38px, 9.5vh, 56px); }
+    .window-rim { width:min(42%, 58svw); height:52%; }
+    .orientation-status { padding:6px 9px; }
+    .clear { padding:8px 12px; }
+    .help { font-size:.68rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration:.01ms !important; animation-duration:.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<main class="app" aria-label="Letter Dial">
+  <header>
+    <div>
+      <div class="brand">LETTER DIAL</div>
+      <div class="mode" id="modeLabel">NORMAL MODE</div>
+    </div>
+    <div class="orientation-status" id="orientationStatus" aria-live="polite">LANDSCAPE MODE</div>
+  </header>
+
+  <section class="stage" aria-label="文字入力ダイヤル">
+    <div class="keys" id="keys"></div>
+    <div class="window-rim">
+      <div class="window" aria-live="polite" aria-atomic="true">
+        <div class="output" id="output"></div>
+        <div class="count"><span id="count">0</span>/7 文字</div>
+      </div>
+    </div>
+    <div class="hint" id="hint" aria-live="polite"></div>
+  </section>
+
+  <div class="bottom">
+    <button class="clear" id="clearBtn" type="button">クリア</button>
+  </div>
+  <button class="clear" id="sensorBtn" type="button">センサーを許可・接続</button>
+  <div class="sensor-debug" id="sensorDebug" aria-live="polite">センサー未接続：上のボタンを押してください</div>
+  <p class="help">文字ボタンで入力 · 最大7文字</p>
+  
+</main>
+<div class="portrait-overlay" role="status" aria-live="polite">
+  <div class="inner">
+    <div class="symbol" aria-hidden="true">↔</div>
+    <strong>横画面で使用してください</strong>
+    <span>端末を横向きにして、画面を180°回転させると窓の向きが切り替わります。</span>
+  </div>
+</div>
+<script>
+(() => {
+  const original = ['s','p','r','i','n','g','m','e','t','o'];
+  // Inverted-mode labels follow the requested key order. null means the
+  // original glyph rotates with the display; an empty string means blank.
+  const upsideDown = ['s','d',null,null,'u',null,'w','a',null,'o'];
+  const keysEl = document.getElementById('keys');
+  const output = document.getElementById('output');
+  const count = document.getElementById('count');
+  const hint = document.getElementById('hint');
+  const modeLabel = document.getElementById('modeLabel');
+  const orientationStatus = document.getElementById('orientationStatus');
+  const sensorDebug = document.getElementById('sensorDebug');
+  const windowEl = document.querySelector('.window');
+  const clearBtn = document.getElementById('clearBtn');
+  const sensorBtn = document.getElementById('sensorBtn');
+  let rotated = false;
+  let value = '';
+  let hintTimer = null;
+  let longPressTimer = null;
+  let longPressFired = false;
+  let sensorBaseline = null;
+  let lastSensorFlipAt = 0;
+  let sensorSamples = 0;
+  let sensorPermissionRequested = false;
+
+  original.forEach((letter, i) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'key';
+    button.setAttribute('aria-label', `入力 ${letter}`);
+    button.dataset.index = String(i);
+    const glyph = document.createElement('span');
+    glyph.className = 'glyph';
+    glyph.textContent = letter;
+    button.appendChild(glyph);
+    button.addEventListener('click', () => {
+      if (longPressFired) { longPressFired = false; return; }
+      if (value.length >= 7) {
+        showHint();
+        return;
+      }
+      const mapped = rotated ? upsideDown[i] : original[i];
+      const entered = mapped === null ? original[i] : mapped;
+      value += entered;
+      render();
+      hint.textContent = '';
+    });
+    const startPress = () => {
+      longPressFired = false;
+      clearTimeout(longPressTimer);
+      longPressTimer = setTimeout(() => {
+        value = '';
+        render();
+        hint.textContent = '';
+        longPressFired = true;
+      }, 1000);
+    };
+    const cancelPress = () => clearTimeout(longPressTimer);
+    button.addEventListener('pointerdown', startPress);
+    button.addEventListener('pointerup', cancelPress);
+    button.addEventListener('pointerleave', cancelPress);
+    button.addEventListener('pointercancel', cancelPress);
+    button.addEventListener('contextmenu', e => e.preventDefault());
+    keysEl.appendChild(button);
+  });
+
+  function updateButtonGlyph(button, id) {
+    const glyph = button.querySelector('.glyph');
+    if (!rotated) {
+      button.classList.remove('rotated');
+      glyph.textContent = original[id];
+      glyph.style.transform = 'rotate(0deg)';
+      button.setAttribute('aria-label', `入力 ${original[id]}`);
+      return;
+    }
+
+    const mapped = upsideDown[id];
+    // In inverted mode, rotate every glyph physically by 180 degrees.
+    // Mapped labels change (p→d, n→u, m→w, e→a); r/i/g/t keep their letters.
+    // This makes the label appear in the intended reading orientation when the
+    // device itself is turned upside down.
+    glyph.style.transform = 'rotate(180deg)';
+    if (mapped === null) {
+      glyph.textContent = original[id];
+      button.setAttribute('aria-label', `入力 ${original[id]}`);
+    } else {
+      glyph.textContent = mapped;
+      button.setAttribute('aria-label', `入力 ${mapped}`);
+    }
+    button.classList.toggle('rotated', true);
+    // Brief fade/scale makes the character substitution feel deliberate.
+    glyph.classList.remove('glyph-change');
+    void glyph.offsetWidth;
+    glyph.classList.add('glyph-change');
+  }
+
+  function positionKeys() {
+    const keys = [...keysEl.children];
+    const stage = document.querySelector('.stage');
+    // Side layout matching the sketch:
+    // two outer buttons and three inner buttons on each side of the wide display.
+    const rows = [
+      // Outer column: two comfortably spaced keys.
+      { ids:[0,1], xs:[0.09,0.09], ys:[0.39,0.61] },
+      // Inner column: three keys, kept outside the central display.
+      { ids:[2,3,4], xs:[0.235,0.235,0.235], ys:[0.27,0.50,0.73] },
+      { ids:[5,6,7], xs:[0.765,0.765,0.765], ys:[0.27,0.50,0.73] },
+      { ids:[8,9], xs:[0.91,0.91], ys:[0.39,0.61] }
+    ];
+    rows.forEach(row => row.ids.forEach((id,j) => {
+      const button = keys[id];
+      button.style.left = `${row.xs[j] * 100}%`;
+      button.style.top = `${row.ys[j] * 100}%`;
+      button.style.transform = 'translate(-50%, -50%)';
+      button.style.width = `clamp(36px, ${Math.min(10, stage.clientHeight * 0.13)}vh, 64px)`;
+      // Re-apply the current orientation after layout changes.
+      updateButtonGlyph(button, id);
+
+    }));
+  }
+  function getScreenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') {
+      return ((screen.orientation.angle % 360) + 360) % 360;
+    }
+    if (typeof window.orientation === 'number') {
+      return ((window.orientation % 360) + 360) % 360;
+    }
+    return null;
+  }
+  function applyRotation(isRotated, source) {
+    rotated = isRotated;
+    windowEl.style.transform = rotated ? 'rotate(180deg)' : 'rotate(0deg)';
+    [...keysEl.children].forEach((button, id) => updateButtonGlyph(button, id));
+    modeLabel.textContent = rotated ? 'INVERTED WINDOW · 180°' : 'LANDSCAPE MODE';
+    orientationStatus.textContent = rotated ? '180° DETECTED' : 'LANDSCAPE MODE';
+    orientationStatus.style.color = rotated ? '#5269e8' : '';
+    orientationStatus.style.borderColor = rotated ? '#aab7f5' : '';
+    orientationStatus.title = source || '';
+    sensorDebug.textContent = `${rotated ? '窓：180°反転' : '窓：通常'} · ${source || '待機中'}`;
+  }
+  async function requestLandscapeLock() {
+    try {
+      if (screen.orientation && typeof screen.orientation.lock === 'function') {
+        await screen.orientation.lock('landscape');
+        orientationStatus.title = '横画面ロック成功';
+      } else {
+        orientationStatus.title = 'このブラウザは画面ロック非対応。端末の自動回転をオフにしてください';
+      }
+    } catch (err) {
+      orientationStatus.title = '画面ロック拒否: 自動回転をオフにするか、ホーム画面追加/HTTPSで試してください';
+    }
+  }
+  function handleDeviceOrientation(event) {
+    const beta = event.beta;
+    const gamma = event.gamma;
+    if (typeof beta !== 'number' || typeof gamma !== 'number' ||
+        !Number.isFinite(beta) || !Number.isFinite(gamma)) return;
+    sensorSamples++;
+    const magnitude = Math.hypot(beta, gamma);
+    if (magnitude < 25) {
+      orientationStatus.title = `センサー受信中 β:${Math.round(beta)} γ:${Math.round(gamma)}。端末を立ててください`;
+      sensorDebug.textContent = `センサー受信中 · β ${Math.round(beta)}° / γ ${Math.round(gamma)}° · 端末を少し立ててください`;
+      return;
+    }
+    // Use the direction of the gravity-related vector rather than choosing a
+    // new dominant axis every event. A physical half-turn should reverse it.
+    const vector = { x: beta / magnitude, y: gamma / magnitude };
+    if (sensorBaseline === null) {
+      sensorBaseline = vector;
+      orientationStatus.title = `センサー基準設定済 β:${Math.round(beta)} γ:${Math.round(gamma)}`;
+      sensorDebug.textContent = `センサー受信OK · 基準姿勢を記録 · β ${Math.round(beta)}° / γ ${Math.round(gamma)}°`;
+      return;
+    }
+    const dot = vector.x * sensorBaseline.x + vector.y * sensorBaseline.y;
+    const now = Date.now();
+    if (now - lastSensorFlipAt < 800) return;
+    // Use hysteresis: only flip after a clear opposite pose; don't respond to
+    // screen orientationchange or transient motion.
+    if (dot < -0.55 && !rotated) {
+      applyRotation(true, '端末センサー: 基準姿勢の反対側');
+      lastSensorFlipAt = now;
+    } else if (dot > 0.55 && rotated) {
+      applyRotation(false, '端末センサー: 基準姿勢に復帰');
+      lastSensorFlipAt = now;
+    }
+    orientationStatus.title = `センサー受信中 β:${Math.round(beta)} γ:${Math.round(gamma)} · 判定:${dot.toFixed(2)}`;
+    sensorDebug.textContent = `センサーOK · β ${Math.round(beta)}° / γ ${Math.round(gamma)}° · 反転判定 ${dot.toFixed(2)} · ${rotated ? '反転中' : '通常'}`;
+  }
+  async function enableSensorsFromGesture() {
+    // Give immediate feedback so a tap never appears to do nothing.
+    sensorDebug.textContent = 'センサーを開始しています…';
+    orientationStatus.title = 'センサーを開始しています…';
+
+    if (typeof DeviceOrientationEvent === 'undefined') {
+      sensorPermissionRequested = false;
+      orientationStatus.title = 'このブラウザでは端末の向きセンサーを利用できません';
+      sensorDebug.textContent = 'DeviceOrientationEvent 非対応です。Android版Chromeで開き直してください。';
+      return;
+    }
+
+    try {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const result = await DeviceOrientationEvent.requestPermission();
+        if (result !== 'granted') {
+          sensorPermissionRequested = false;
+          orientationStatus.title = 'センサー許可が必要です';
+          sensorDebug.textContent = '許可されませんでした。ブラウザのサイト設定でモーション／センサーへのアクセスを確認してください。';
+          return;
+        }
+      }
+
+      // Avoid registering the same listener more than once.
+      window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
+      window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+      sensorPermissionRequested = true;
+      sensorBaseline = null;
+      sensorSamples = 0;
+      orientationStatus.title = 'センサー待機中。端末を立ててから基準姿勢を記録してください';
+      sensorDebug.textContent = '接続処理は完了しました。端末を少し立てて、数秒後にゆっくり180°回してください。';
+    } catch (err) {
+      sensorPermissionRequested = false;
+      orientationStatus.title = 'センサーを開始できません';
+      sensorDebug.textContent = '開始に失敗しました。Android版Chromeで開き、サイト設定のモーション／センサー権限を確認してください。';
+    }
+  }
+  function render() {
+    output.textContent = value;
+    count.textContent = String(value.length);
+  }
+  function showHint() {
+    hint.textContent = '長押しでリセット!';
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { hint.textContent = ''; }, 3500);
+  }
+  clearBtn.addEventListener('click', () => {
+    value = '';
+    hint.textContent = '';
+    render();
+  });
+  window.addEventListener('resize', () => positionKeys());
+  // Do not infer the half-turn from screen.orientation: that only describes
+  // the browser display and was the cause of the phone rotating instead.
+  sensorBtn.addEventListener('click', enableSensorsFromGesture);
+  positionKeys();
+  render();
+})();
+</script>
+</body>
+</html>
